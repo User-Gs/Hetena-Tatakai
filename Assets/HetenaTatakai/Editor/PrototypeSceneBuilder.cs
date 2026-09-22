@@ -8,7 +8,7 @@ namespace HetenaTatakai.EditorTools
 {
     public static class PrototypeSceneBuilder
     {
-        [MenuItem("Hetena Tatakai/Build Prototype Scene")]
+        [MenuItem("Hetena Tatakai/Build Full 3D Flow")]
         public static void Build()
         {
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
@@ -19,43 +19,54 @@ namespace HetenaTatakai.EditorTools
             FighterStats leylaStats = CreateStatsAsset("Leyla_Prototype", FighterId.Leyla, "Leyla", 3, 3, 3, 3, 3, 3);
             FighterStats eleniStats = CreateStatsAsset("Eleni_Prototype", FighterId.Eleni, "Eleni", 3, 2, 4, 3, 3, 2);
 
-            GameObject leyla = CreateFighter("Leyla", new Vector3(-1.7f, 1f, 0f));
-            GameObject eleni = CreateFighter("Eleni", new Vector3(1.7f, 1f, 0f));
+            GameObject player = CreateFighter("Player Fighter", new Vector3(-1.7f, 1f, 0f));
+            GameObject enemy = CreateFighter("Enemy Fighter", new Vector3(1.7f, 1f, 0f));
 
-            FighterMotor3D leylaMotor = leyla.GetComponent<FighterMotor3D>();
-            FighterMotor3D eleniMotor = eleni.GetComponent<FighterMotor3D>();
-            FighterCombatController leylaCombat = leyla.GetComponent<FighterCombatController>();
-            FighterCombatController eleniCombat = eleni.GetComponent<FighterCombatController>();
-            Hitbox leylaHitbox = leyla.GetComponentInChildren<Hitbox>();
-            Hitbox eleniHitbox = eleni.GetComponentInChildren<Hitbox>();
+            FighterMotor3D playerMotor = player.GetComponent<FighterMotor3D>();
+            FighterMotor3D enemyMotor = enemy.GetComponent<FighterMotor3D>();
+            FighterCombatController playerCombat = player.GetComponent<FighterCombatController>();
+            FighterCombatController enemyCombat = enemy.GetComponent<FighterCombatController>();
+            Hitbox playerHitbox = player.GetComponentInChildren<Hitbox>();
+            Hitbox enemyHitbox = enemy.GetComponentInChildren<Hitbox>();
 
-            leylaMotor.Configure(leylaStats, eleni.transform);
-            eleniMotor.Configure(eleniStats, leyla.transform);
-            leylaMotor.SetArena(Vector3.zero, 7.5f);
-            eleniMotor.SetArena(Vector3.zero, 7.5f);
-            eleniMotor.SetKeys(KeyCode.UpArrow, KeyCode.DownArrow, KeyCode.LeftArrow, KeyCode.RightArrow);
+            playerMotor.Configure(leylaStats, enemy.transform);
+            enemyMotor.Configure(eleniStats, player.transform);
+            playerMotor.SetArena(Vector3.zero, 7.5f);
+            enemyMotor.SetArena(Vector3.zero, 7.5f);
 
-            leylaCombat.Configure(leylaStats, eleniCombat, leylaHitbox);
-            eleniCombat.Configure(eleniStats, leylaCombat, eleniHitbox);
-            eleniCombat.SetKeys(KeyCode.Keypad1, KeyCode.Keypad2, KeyCode.Keypad3, KeyCode.Keypad0);
+            playerCombat.Configure(leylaStats, enemyCombat, playerHitbox);
+            enemyCombat.Configure(eleniStats, playerCombat, enemyHitbox);
 
             GameObject cameraGo = new GameObject("Fight Camera");
             Camera camera = cameraGo.AddComponent<Camera>();
             camera.fieldOfView = 48f;
             cameraGo.tag = "MainCamera";
             FightCamera3D fightCamera = cameraGo.AddComponent<FightCamera3D>();
-            fightCamera.Configure(leyla.transform, eleni.transform);
+            fightCamera.Configure(player.transform, enemy.transform);
 
             GameObject managerGo = new GameObject("Duel Manager");
             DuelManager manager = managerGo.AddComponent<DuelManager>();
-            manager.Configure(leylaCombat, eleniCombat);
+            manager.Configure(playerCombat, enemyCombat);
+
+            PrototypeCPUController cpu = enemy.AddComponent<PrototypeCPUController>();
+            cpu.enabled = false;
+
+            GameObject hudGo = new GameObject("Fight HUD");
+            FightHUD hud = hudGo.AddComponent<FightHUD>();
+
+            GameObject flowGo = new GameObject("Game Flow");
+            GameFlowController flow = flowGo.AddComponent<GameFlowController>();
+            flow.Configure(playerCombat, enemyCombat, manager, cpu, hud);
 
             EditorSceneManager.MarkSceneDirty(scene);
-            EditorSceneManager.SaveScene(scene, "Assets/HetenaTatakai/PrototypeScene.unity");
+            EditorSceneManager.SaveScene(scene, "Assets/HetenaTatakai/HetenaTatakai3D.unity");
             AssetDatabase.SaveAssets();
-            Selection.activeGameObject = leyla;
-            Debug.Log("Hetena Tatakai 3D prototype created. Press Play: WASD + J/K/L/I vs Arrows + Numpad 1/2/3/0.");
+            Selection.activeGameObject = flowGo;
+            Debug.Log("Hetena Tatakai 3D full flow created: Title > Difficulty > Fighter > Skin > Arena > Enemy > Fight > KO/Result > Try Again.");
         }
+
+        [MenuItem("Hetena Tatakai/Build Prototype Scene")]
+        public static void BuildLegacyAlias() => Build();
 
         private static void CreateLighting()
         {

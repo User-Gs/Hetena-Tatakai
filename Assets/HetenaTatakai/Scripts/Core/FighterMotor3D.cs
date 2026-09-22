@@ -16,13 +16,16 @@ namespace HetenaTatakai
         [SerializeField] private Vector3 arenaCenter = Vector3.zero;
         [SerializeField] private float arenaRadius = 8f;
         [SerializeField] private bool inputEnabled = true;
+        [SerializeField] private bool aiControlled;
 
         private CharacterController controller;
         private FighterStateMachine stateMachine;
+        private Vector2 aiMoveInput;
 
         public FighterStats Stats => stats;
         public Transform Opponent => opponent;
         public bool InputEnabled => inputEnabled;
+        public bool AIControlled => aiControlled;
 
         private void Awake()
         {
@@ -53,8 +56,23 @@ namespace HetenaTatakai
         public void SetInputEnabled(bool value)
         {
             inputEnabled = value;
-            if (!value && stateMachine.CurrentState == FighterState.Moving)
-                stateMachine.SetState(FighterState.Neutral);
+            if (!value)
+            {
+                aiMoveInput = Vector2.zero;
+                if (stateMachine.CurrentState == FighterState.Moving)
+                    stateMachine.SetState(FighterState.Neutral);
+            }
+        }
+
+        public void SetAIControlled(bool value)
+        {
+            aiControlled = value;
+            aiMoveInput = Vector2.zero;
+        }
+
+        public void SetAIMovement(Vector2 movement)
+        {
+            aiMoveInput = Vector2.ClampMagnitude(movement, 1f);
         }
 
         private void Update()
@@ -70,10 +88,22 @@ namespace HetenaTatakai
 
             Vector3 forward = toOpponent.normalized;
             Vector3 right = Vector3.Cross(Vector3.up, forward).normalized;
-            float forwardInput = (Input.GetKey(forwardKey) ? 1f : 0f) - (Input.GetKey(backKey) ? 1f : 0f);
-            float sideInput = (Input.GetKey(rightKey) ? 1f : 0f) - (Input.GetKey(leftKey) ? 1f : 0f);
-            Vector3 desired = forward * forwardInput * stats.moveSpeed + right * sideInput * stats.sidestepSpeed;
 
+            float forwardInput;
+            float sideInput;
+
+            if (aiControlled)
+            {
+                sideInput = aiMoveInput.x;
+                forwardInput = aiMoveInput.y;
+            }
+            else
+            {
+                forwardInput = (Input.GetKey(forwardKey) ? 1f : 0f) - (Input.GetKey(backKey) ? 1f : 0f);
+                sideInput = (Input.GetKey(rightKey) ? 1f : 0f) - (Input.GetKey(leftKey) ? 1f : 0f);
+            }
+
+            Vector3 desired = forward * forwardInput * stats.moveSpeed + right * sideInput * stats.sidestepSpeed;
             controller.SimpleMove(desired);
             stateMachine.SetState(desired.sqrMagnitude > 0.001f ? FighterState.Moving : FighterState.Neutral);
             ClampToArena();

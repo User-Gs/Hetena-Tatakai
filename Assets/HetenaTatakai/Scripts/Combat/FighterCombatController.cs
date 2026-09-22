@@ -35,9 +35,14 @@ namespace HetenaTatakai
         private float lastConnectTime = -100f;
         private Coroutine attackRoutine;
         private Coroutine stunRoutine;
+        private bool aiControlled;
+        private bool guardRequested;
+        private bool fightActive = true;
+        private GameDifficulty difficulty = GameDifficulty.Easy;
 
         public bool IsGuarding => stateMachine.CurrentState == FighterState.Guarding;
         public bool IsStunned => stateMachine.CurrentState == FighterState.HitStun || stateMachine.CurrentState == FighterState.Knockdown;
+        public bool CanAttack => fightActive && stateMachine.CanAttack && !health.IsKO;
         public int ComboCount => comboCount;
         public FighterHealth Health => health;
 
@@ -70,11 +75,54 @@ namespace HetenaTatakai
             guardKey = guard;
         }
 
+        public void SetAIControlled(bool value)
+        {
+            aiControlled = value;
+            guardRequested = false;
+        }
+
+        public void SetDifficulty(GameDifficulty value) => difficulty = value;
+        public void SetGuardRequested(bool value) => guardRequested = value;
+
+        public void SetFightActive(bool value)
+        {
+            fightActive = value;
+            guardRequested = false;
+
+            if (!value)
+            {
+                CancelAction();
+                if (stunRoutine != null)
+                {
+                    StopCoroutine(stunRoutine);
+                    stunRoutine = null;
+                }
+                attackHitbox?.Disarm();
+                motor.SetInputEnabled(false);
+            }
+        }
+
+        public void TryLightPunch()
+        {
+            if (CanAttack) StartAttack(lightPunch);
+        }
+
+        public void TryHeavyPunch()
+        {
+            if (CanAttack) StartAttack(heavyPunch);
+        }
+
+        public void TryKick()
+        {
+            if (CanAttack) StartAttack(kick);
+        }
+
         private void Update()
         {
-            if (health.IsKO || stats == null) return;
+            if (!fightActive || health.IsKO || stats == null) return;
 
-            if (stateMachine.CanGuard && Input.GetKey(guardKey))
+            bool wantsGuard = aiControlled ? guardRequested : Input.GetKey(guardKey);
+            if (stateMachine.CanGuard && wantsGuard)
             {
                 stateMachine.SetState(FighterState.Guarding);
                 return;
@@ -83,15 +131,16 @@ namespace HetenaTatakai
             if (stateMachine.CurrentState == FighterState.Guarding)
                 stateMachine.SetState(FighterState.Neutral);
 
-            if (!stateMachine.CanAttack) return;
+            if (aiControlled || !stateMachine.CanAttack) return;
 
-            if (Input.GetKeyDown(lightPunchKey)) StartAttack(lightPunch);
-            else if (Input.GetKeyDown(heavyPunchKey)) StartAttack(heavyPunch);
-            else if (Input.GetKeyDown(kickKey)) StartAttack(kick);
+            if (Input.GetKeyDown(lightPunchKey)) TryLightPunch();
+            else if (Input.GetKeyDown(heavyPunchKey)) TryHeavyPunch();
+            else if (Input.GetKeyDown(kickKey)) TryKick();
         }
 
         private void StartAttack(AttackDefinition attack)
         {
+            if (!CanAttack) return;
             if (attackRoutine != null) StopCoroutine(attackRoutine);
             attackRoutine = StartCoroutine(AttackRoutine(attack));
         }
@@ -103,8 +152,9 @@ namespace HetenaTatakai
             motor.SetInputEnabled(false);
 
             if (attack.startup > 0f) yield return new WaitForSeconds(attack.startup);
+            if (!fightActive) yield break;
 
-            D6Result roll = D6CombatResolver.Roll(stats, attack);
+            D6Result roll = D6CombatResolver.Roll(stats, attack, aiControlled, difficulty);
             Vector3 direction = target != null ? target.transform.position - transform.position : transform.forward;
             CombatHit hit = new CombatHit(gameObject, roll.FinalDamage, attack.hitStun, attack.knockback, roll.Critical, direction);
 
@@ -115,20 +165,18 @@ namespace HetenaTatakai
             float recovery = attack.recovery * FatigueModel.RecoveryMultiplier(stats.energy, attacksPerformed);
             if (recovery > 0f) yield return new WaitForSeconds(recovery);
 
-            if (!health.IsKO && !stateMachine.IsLocked)
+            if (fightActive && !health.IsKO && !stateMachine.IsLocked)
                 stateMachine.SetState(FighterState.Neutral);
-            motor.SetInputEnabled(!health.IsKO);
+            motor.SetInputEnabled(fightActive && !health.IsKO);
             attackRoutine = null;
         }
 
         public void ReceiveHit(CombatHit hit)
         {
-            if (health.IsKO || hit.Attacker == gameObject) return;
+            if (!fightActive || health.IsKO || hit.Attacker == gameObject) return;
 
-            float damage = hit.Damage;
-            if (IsGuarding)
-                damage = Mathf.Max(1f, Mathf.Ceil(damage * 0.30f));
-
+            bool wasGuarding = IsGuarding;
+            float damage = wasGuarding ? Mathf.Max(1f, Mathf.Ceil(hit.Damage * 0.30f)) : hit.Damage;
             float applied = health.TakeDamage(damage);
             if (applied <= 0f) return;
 
@@ -140,7 +188,7 @@ namespace HetenaTatakai
                 return;
             }
 
-            if (IsGuarding)
+            if (wasGuarding)
             {
                 motor.ApplyKnockback(hit.Direction, hit.Knockback * 0.35f);
                 return;
@@ -164,7 +212,7 @@ namespace HetenaTatakai
             motor.ApplyKnockback(direction, knockback * (critical ? 1.25f : 1f));
             yield return new WaitForSeconds(Mathf.Max(0.05f, duration));
 
-            if (!health.IsKO)
+            if (fightActive && !health.IsKO)
             {
                 stateMachine.SetState(FighterState.Neutral);
                 motor.SetInputEnabled(true);
@@ -199,9 +247,10 @@ namespace HetenaTatakai
             }
             attacksPerformed = 0;
             comboCount = 0;
+            guardRequested = false;
             health.Configure(stats != null ? stats.maxHealth : 100f);
             stateMachine.ForceReset();
-            motor.SetInputEnabled(true);
+            motor.SetInputEnabled(fightActive);
         }
     }
 }

@@ -18,6 +18,7 @@ namespace HetenaTatakai
         private int winsA;
         private int winsB;
         private bool roundEnding;
+        private Coroutine roundRoutine;
 
         public int WinsA => winsA;
         public int WinsB => winsB;
@@ -58,13 +59,31 @@ namespace HetenaTatakai
             if (fighterB != null) fighterB.Health.KnockedOut -= OnKnockout;
         }
 
+        public void StartNewMatch()
+        {
+            if (roundRoutine != null)
+            {
+                StopCoroutine(roundRoutine);
+                roundRoutine = null;
+            }
+
+            winsA = 0;
+            winsB = 0;
+            roundEnding = false;
+            ScoreChanged?.Invoke(winsA, winsB);
+            ResetTransform(fighterA.transform, spawnA, rotA);
+            ResetTransform(fighterB.transform, spawnB, rotB);
+            fighterA.ResetForRound();
+            fighterB.ResetForRound();
+        }
+
         private void OnKnockout(FighterHealth loser)
         {
             if (roundEnding) return;
             FighterCombatController winner = loser == fighterA.Health ? fighterB : fighterA;
             if (winner == fighterA) winsA++; else winsB++;
             ScoreChanged?.Invoke(winsA, winsB);
-            StartCoroutine(EndRoundRoutine(winner));
+            roundRoutine = StartCoroutine(EndRoundRoutine(winner));
         }
 
         private IEnumerator EndRoundRoutine(FighterCombatController winner)
@@ -87,6 +106,7 @@ namespace HetenaTatakai
             fighterA.ResetForRound();
             fighterB.ResetForRound();
             roundEnding = false;
+            roundRoutine = null;
         }
 
         private static void ResetTransform(Transform target, Vector3 position, Quaternion rotation)
